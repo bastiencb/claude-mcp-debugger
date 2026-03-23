@@ -92,12 +92,12 @@ python -m venv $env:USERPROFILE\.claude\mcp_debugger\.venv
 
 Linux / macOS :
 ```bash
-claude mcp add -s user -t stdio debugger -- ~/.claude/mcp_debugger/.venv/bin/python3 -m mcp_debugger
+claude mcp add -s user -t stdio debugger -e "PYTHONPATH=$HOME/.claude" -- ~/.claude/mcp_debugger/.venv/bin/python3 -m mcp_debugger
 ```
 
 Windows (PowerShell) :
 ```powershell
-claude mcp add -s user -t stdio debugger -- $env:USERPROFILE\.claude\mcp_debugger\.venv\Scripts\python.exe -m mcp_debugger
+claude mcp add -s user -t stdio debugger -e "PYTHONPATH=$($env:USERPROFILE -replace '\\','/')/.claude" -- $env:USERPROFILE\.claude\mcp_debugger\.venv\Scripts\python.exe -m mcp_debugger
 ```
 
 > Ceci écrit dans `~/.claude.json` (la config Claude Code). Vérifiez avec `claude mcp list`.
