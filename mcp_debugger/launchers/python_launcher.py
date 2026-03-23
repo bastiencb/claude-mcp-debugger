@@ -4,6 +4,7 @@ import ast
 import asyncio
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -125,7 +126,7 @@ def _kill_port_holder(port: int) -> bool:
         logger.debug("No process found on port %d", port)
         return False
 
-    logger.info("Killing stale process PID %d on port %d", pid, port)
+    logger.info("Sending SIGTERM to stale process PID %d on port %d", pid, port)
     try:
         if _IS_WINDOWS:
             result = subprocess.run(
@@ -137,8 +138,9 @@ def _kill_port_holder(port: int) -> bool:
                 return False
             logger.info("Killed process tree for PID %d", pid)
         else:
-            os.kill(pid, 9)
-            logger.info("Killed PID %d with SIGKILL", pid)
+            # Use SIGTERM first (graceful), not SIGKILL (brutal)
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Sent SIGTERM to PID %d", pid)
         return True
     except ProcessLookupError:
         logger.debug("PID %d already exited", pid)
@@ -149,7 +151,12 @@ def _kill_port_holder(port: int) -> bool:
 
 
 def _kill_process_tree(proc: subprocess.Popen) -> None:
-    """Kill a process and all its children. Cross-platform."""
+    """Kill a process and all its children. Cross-platform.
+
+    SAFETY: On Linux, only uses killpg if the process has its own session
+    (start_new_session=True). Otherwise falls back to proc.kill() to avoid
+    killing the MCP server's process group.
+    """
     if proc.poll() is not None:
         return
     pid = proc.pid
@@ -164,14 +171,17 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
                 logger.warning("taskkill /T failed for PID %d: %s, falling back to proc.kill()", pid, result.stderr.strip())
                 proc.kill()
         else:
-            # Kill the entire process group
+            # Only killpg if process has its own group (start_new_session=True)
             try:
-                os.killpg(os.getpgid(pid), 9)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                logger.debug("Cannot killpg PID %d, falling back to proc.kill()", pid)
-                proc.kill()
+                pgid = os.getpgid(pid)
+                if pgid == pid:
+                    # Process is its own group leader — safe to killpg
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    # Process shares group with parent — just kill it directly
+                    proc.terminate()
+            except (ProcessLookupError, PermissionError):
+                proc.terminate()
     except Exception as e:
         logger.warning("Error killing process tree PID %d: %s, trying proc.kill()", pid, e)
         try:
@@ -182,7 +192,12 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
         proc.wait(timeout=3)
         logger.debug("Process PID %d reaped", pid)
     except Exception:
-        logger.warning("Process PID %d did not exit after kill", pid)
+        logger.warning("Process PID %d did not exit after SIGTERM, sending SIGKILL", pid)
+        try:
+            proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
 
 
 class PythonLauncher(BaseLauncher):
@@ -286,6 +301,8 @@ class PythonLauncher(BaseLauncher):
 
         logger.info("Starting debugpy: %s", " ".join(cmd))
 
+        # start_new_session=True gives debugpy its own process group,
+        # so killpg() only affects debugpy + children, not the MCP server.
         process = subprocess.Popen(
             cmd,
             cwd=work_dir,
@@ -294,6 +311,7 @@ class PythonLauncher(BaseLauncher):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            start_new_session=not _IS_WINDOWS,
         )
         logger.info("debugpy process started with PID %d", process.pid)
 

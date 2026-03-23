@@ -252,7 +252,12 @@ class DebugSession:
 
     @staticmethod
     def _kill_process(proc: subprocess.Popen) -> None:
-        """Kill a subprocess and its children. Cross-platform."""
+        """Kill a subprocess and its children. Cross-platform.
+
+        SAFETY: On Linux, only uses killpg if the process is its own group
+        leader (start_new_session=True was used). Otherwise just terminates
+        the process directly to avoid killing the MCP server's process group.
+        """
         if proc.poll() is not None:
             return
         pid = proc.pid
@@ -271,9 +276,13 @@ class DebugSession:
                     )
                     proc.terminate()
             else:
-                # Kill the process group to clean up child processes
+                # Only killpg if process has its own group (start_new_session=True)
                 try:
-                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    pgid = os.getpgid(pid)
+                    if pgid == pid:
+                        os.killpg(pgid, signal.SIGTERM)
+                    else:
+                        proc.send_signal(signal.SIGTERM)
                 except (ProcessLookupError, PermissionError):
                     proc.send_signal(signal.SIGTERM)
         except Exception as e:
