@@ -923,7 +923,7 @@ async def _wait_and_report(session: DebugSession, timeout: float = 30.0) -> str:
     reason = stop_info.get("reason", "unknown")
 
     if reason == "terminated":
-        output = session.get_output()
+        output = await session.stop()
         return json.dumps({"terminated": True, "output": output or None})
 
     frames = await session.client.get_stack_trace()

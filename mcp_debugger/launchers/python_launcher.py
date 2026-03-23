@@ -83,12 +83,15 @@ def _first_code_line(file_path: str) -> int:
 
 
 def _is_port_in_use(host: str, port: int) -> bool:
-    """Check if a port is currently in use."""
+    """Check if a port is currently in use (non-intrusive bind test)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        with socket.create_connection((host, port), timeout=1):
-            return True
+        s.bind((host, port))
+        return False  # bind succeeded → port is free
     except OSError:
-        return False
+        return True  # bind failed → port is in use
+    finally:
+        s.close()
 
 
 def _find_pid_on_port(port: int) -> int | None:
@@ -287,8 +290,9 @@ class PythonLauncher(BaseLauncher):
             cmd,
             cwd=work_dir,
             env=proc_env,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
         )
         logger.info("debugpy process started with PID %d", process.pid)
