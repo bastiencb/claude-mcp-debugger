@@ -358,17 +358,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Pause a running thread. Use when the program is running (e.g., stuck in a loop).\n\nArgs:\n    thread_id: Thread to pause (default: 1).\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_pause(thread_id: int = 1) -> str:
-        """Pause a running thread. Use when the program is running (e.g., stuck in a loop).
-
-        Args:
-            thread_id: Thread to pause (default: 1, the main thread).
-
-        Returns:
-            JSON {reason, location, source_context, locals}.
-
-        Rich display (style 4): ■ **`debug_pause`** @ `file:line` in `func()`
-        then human comment, source code block with → marker, data comment, and ```json block.
-        """
+        """Pause a running thread."""
         session = get_session()
         _require_active(session)
 
@@ -377,20 +367,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Resume execution until next breakpoint, exception, or program end.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately (browser/interactive).\n\nReturns:\n    wait=True: JSON {reason, location, source_context, locals, exception?}.\n    wait=False: JSON {resumed: true, message}." + _RICH_STOP)
     async def debug_continue(wait: bool = True) -> str:
-        """Resume execution until next breakpoint, exception, or program end.
-
-        Args:
-            wait: If True (default), block until the debugger stops and return full context.
-                  If False, resume and return immediately (browser/interactive debugging).
-
-        Returns:
-            If wait=True: JSON {reason, location, source_context, locals, exception?}.
-            If wait=False: JSON {resumed: true, message}.
-
-        Rich display (style 4): icon + **`debug_continue`** @ `file:line` in `func()`
-        then human comment, source code block with → marker, data comment, and ```json block.
-        Icons: ● breakpoint, → step, ✕ exception.
-        """
+        """Resume execution until next breakpoint, exception, or program end."""
         session = get_session()
         _require_active(session)
 
@@ -401,17 +378,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Step over: execute the current line and stop at the next one.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_over(wait: bool = True) -> str:
-        """Step over: execute the current line and stop at the next one.
-
-        Args:
-            wait: If True (default), block until stopped. If False, return immediately.
-
-        Returns:
-            JSON {reason, location, source_context, locals}.
-
-        Rich display (style 4): → **`debug_step_over`** @ `file:line` in `func()`
-        then human comment, source code block with → marker, data comment, and ```json block.
-        """
+        """Step over: execute the current line and stop at the next one."""
         session = get_session()
         _require_active(session)
 
@@ -422,17 +389,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Step into: enter the function call on the current line.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_into(wait: bool = True) -> str:
-        """Step into: enter the function call on the current line.
-
-        Args:
-            wait: If True (default), block until stopped. If False, return immediately.
-
-        Returns:
-            JSON {reason, location, source_context, locals}.
-
-        Rich display (style 4): → **`debug_step_into`** @ `file:line` in `func()`
-        then human comment, source code block with → marker, data comment, and ```json block.
-        """
+        """Step into: enter the function call on the current line."""
         session = get_session()
         _require_active(session)
 
@@ -443,17 +400,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Step out: run until the current function returns.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_out(wait: bool = True) -> str:
-        """Step out: run until the current function returns.
-
-        Args:
-            wait: If True (default), block until stopped. If False, return immediately.
-
-        Returns:
-            JSON {reason, location, source_context, locals}.
-
-        Rich display (style 4): → **`debug_step_out`** @ `file:line` in `func()`
-        then human comment, source code block with → marker, data comment, and ```json block.
-        """
+        """Step out: run until the current function returns."""
         session = get_session()
         _require_active(session)
 
@@ -464,19 +411,7 @@ def create_server() -> Any:
 
     @mcp.tool(description="Wait for the debugger to stop (breakpoint, exception, or termination).\n\nUse after debug_continue(wait=False) in browser/interactive debugging.\n\nArgs:\n    timeout: Maximum seconds to wait (default: 300).\n\nReturns:\n    JSON {reason, location, source_context, locals}.\n    If timeout: {running: true, message}." + _RICH_STOP)
     async def debug_wait_for_event(timeout: float = 300.0) -> str:
-        """Wait for the debugger to stop (breakpoint, exception, or termination).
-
-        Use after debug_continue(wait=False) in browser/interactive debugging.
-
-        Args:
-            timeout: Maximum seconds to wait (default: 300 = 5 minutes).
-
-        Returns:
-            JSON {reason, location, source_context, locals}.
-            If timeout: {running: true, message}.
-
-        Rich display (style 4): same as debug_continue — icon + context + source + JSON.
-        """
+        """Wait for the debugger to stop. Use after debug_continue(wait=False)."""
         session = get_session()
         _require_active(session)
         return await _wait_and_report(session, timeout=timeout)
@@ -518,20 +453,7 @@ def create_server() -> Any:
         thread_id: int = 1,
         frame_index: int = 0,
     ) -> str:
-        """Inspect variables in the current scope.
-
-        Args:
-            scope: 'local' or 'global' (default: 'local').
-            thread_id: Thread to inspect (default: 1).
-            frame_index: Stack frame index, 0 = current (default: 0).
-
-        Returns:
-            JSON: {scope, location, variables: [{name, type, value, ref?}]}.
-            Variables with ref > 0 can be expanded with debug_expand_variable.
-
-        Rich display (style 4): **`debug_variables`** @ `file:line` in `func()`
-        then human comment about scope/context, then ```json block.
-        """
+        """Inspect variables in the current scope."""
         session = get_session()
         _require_active(session)
 
@@ -578,19 +500,7 @@ def create_server() -> Any:
         frame_index: int = 0,
         thread_id: int = 1,
     ) -> str:
-        """Evaluate an expression in the debugger context.
-
-        Args:
-            expression: Expression to evaluate (e.g., 'len(my_list)', 'x + y').
-            frame_index: Stack frame for context (0 = current frame).
-            thread_id: Thread to use (default: 1).
-
-        Returns:
-            JSON: {expression, type, value, ref?}. If ref is present, use debug_expand_variable.
-
-        Rich display (style 4): **`debug_evaluate`** @ `file:line` in `func()`
-        then `expression` = `value` (type), then ```json block.
-        """
+        """Evaluate an expression in the debugger context."""
         session = get_session()
         _require_active(session)
 
@@ -802,23 +712,7 @@ def create_server() -> Any:
     async def debug_expand_variable(
         variables_reference: int, max_depth: int = 1, skip_internals: bool = True,
     ) -> str:
-        """Expand a complex variable (dict, list, object) to see its contents.
-
-        Use the ref=N value from debug_variables or debug_evaluate output.
-
-        Args:
-            variables_reference: The reference ID from the "ref" field.
-            max_depth: Levels of nesting to expand (default: 1, no hard limit).
-                1=immediate children, 2-3=most needs, 4+=deep structures.
-                Circular references are auto-detected.
-            skip_internals: Filter out __dunder__ and builtin methods (default: True).
-
-        Returns:
-            JSON: {children: [{name, type, value, ref?, children?: [...]}]}.
-
-        Rich display (style 4): **`debug_expand_variable`** @ `file:line` in `func()`
-        then human comment, tree view with ├── └── │ connectors, then ```json block.
-        """
+        """Expand a complex variable to see its contents."""
         session = get_session()
         _require_active(session)
 
