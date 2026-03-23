@@ -60,54 +60,21 @@ echo "Installing dependencies..."
 
 # ── Register MCP server ──────────────────────────────────────
 
-CLAUDE_JSON="$HOME/.claude.json"
-
 if command -v claude &>/dev/null; then
     echo "Registering debugger with Claude Code..."
     claude mcp add -s user -t stdio debugger -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null && {
         echo "MCP server registered via 'claude mcp add'."
     } || {
-        echo "Warning: 'claude mcp add' failed, writing config directly..."
-        _write_claude_json=true
+        echo ""
+        echo "Warning: 'claude mcp add' failed."
+        echo "Register manually from a terminal where Claude Code is available:"
+        echo "  claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
     }
 else
-    _write_claude_json=true
-fi
-
-if [ "${_write_claude_json:-}" = true ]; then
-    echo "Writing debugger config to $CLAUDE_JSON..."
-    if [ -f "$CLAUDE_JSON" ]; then
-        # File exists — add or update the debugger entry
-        python3 -c "
-import json
-with open('$CLAUDE_JSON') as f:
-    cfg = json.load(f)
-cfg.setdefault('mcpServers', {})['debugger'] = {
-    'type': 'stdio',
-    'command': '$VENV_PYTHON',
-    'args': ['-m', 'mcp_debugger'],
-    'env': {'PYTHONPATH': '$HOME/.claude'}
-}
-with open('$CLAUDE_JSON', 'w') as f:
-    json.dump(cfg, f, indent=2)
-    f.write('\n')
-"
-    else
-        # File doesn't exist — create minimal config
-        python3 -c "
-import json
-cfg = {'mcpServers': {'debugger': {
-    'type': 'stdio',
-    'command': '$VENV_PYTHON',
-    'args': ['-m', 'mcp_debugger'],
-    'env': {'PYTHONPATH': '$HOME/.claude'}
-}}}
-with open('$CLAUDE_JSON', 'w') as f:
-    json.dump(cfg, f, indent=2)
-    f.write('\n')
-"
-    fi
-    echo "Config written to $CLAUDE_JSON."
+    echo ""
+    echo "Claude Code CLI not found in PATH."
+    echo "Open a terminal in VS Code (or where Claude Code is installed) and run:"
+    echo "  claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
 fi
 
 # ── Done ───────────────────────────────────────────────────────

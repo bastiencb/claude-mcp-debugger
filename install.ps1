@@ -62,9 +62,6 @@ Write-Host "Installing dependencies..."
 
 # ── Register MCP server ──────────────────────────────────────
 
-$ClaudeJson = "$env:USERPROFILE\.claude.json"
-$writeDirectly = $false
-
 $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
 if ($claudeCmd) {
     Write-Host "Registering debugger with Claude Code..."
@@ -72,37 +69,16 @@ if ($claudeCmd) {
         & claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger 2>$null
         Write-Host "MCP server registered via 'claude mcp add'."
     } catch {
-        Write-Host "Warning: 'claude mcp add' failed, writing config directly..."
-        $writeDirectly = $true
+        Write-Host ""
+        Write-Host "Warning: 'claude mcp add' failed."
+        Write-Host "Register manually from a terminal where Claude Code is available:"
+        Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
     }
 } else {
-    $writeDirectly = $true
-}
-
-if ($writeDirectly) {
-    Write-Host "Writing debugger config to $ClaudeJson..."
-    $VenvPythonFwd = $VenvPython -replace '\\', '/'
-    $claudeDir = "$env:USERPROFILE\.claude" -replace '\\', '/'
-
-    $debuggerEntry = @{
-        type = "stdio"
-        command = $VenvPythonFwd
-        args = @("-m", "mcp_debugger")
-        env = @{ PYTHONPATH = $claudeDir }
-    }
-
-    if (Test-Path $ClaudeJson) {
-        $cfg = Get-Content $ClaudeJson -Raw | ConvertFrom-Json -AsHashtable
-    } else {
-        $cfg = @{}
-    }
-
-    if (-not $cfg.ContainsKey("mcpServers")) {
-        $cfg["mcpServers"] = @{}
-    }
-    $cfg["mcpServers"]["debugger"] = $debuggerEntry
-    $cfg | ConvertTo-Json -Depth 10 | Set-Content $ClaudeJson -Encoding UTF8
-    Write-Host "Config written to $ClaudeJson."
+    Write-Host ""
+    Write-Host "Claude Code CLI not found in PATH."
+    Write-Host "Open a terminal in VS Code (or where Claude Code is installed) and run:"
+    Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
 }
 
 # ── Done ───────────────────────────────────────────────────────
