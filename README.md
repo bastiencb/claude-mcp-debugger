@@ -70,17 +70,28 @@ cp -r claude-mcp-debugger/mcp_debugger ~/.claude/mcp_debugger   # Linux/macOS
 
 **2. Create venv and install dependencies:**
 
+Linux / macOS:
 ```bash
 python3 -m venv ~/.claude/mcp_debugger/.venv
 ~/.claude/mcp_debugger/.venv/bin/python3 -m pip install "mcp[cli]>=1.0" debugpy
-# Windows: use .venv\Scripts\python.exe instead of .venv/bin/python3
+```
+
+Windows (PowerShell):
+```powershell
+python -m venv $env:USERPROFILE\.claude\mcp_debugger\.venv
+& $env:USERPROFILE\.claude\mcp_debugger\.venv\Scripts\python.exe -m pip install "mcp[cli]>=1.0" debugpy
 ```
 
 **3. Register with Claude Code:**
 
+Linux / macOS:
 ```bash
 claude mcp add -s user -t stdio debugger -- ~/.claude/mcp_debugger/.venv/bin/python3 -m mcp_debugger
-# Windows: claude mcp add -s user -t stdio debugger -- %USERPROFILE%\.claude\mcp_debugger\.venv\Scripts\python.exe -m mcp_debugger
+```
+
+Windows (PowerShell):
+```powershell
+claude mcp add -s user -t stdio debugger -- $env:USERPROFILE\.claude\mcp_debugger\.venv\Scripts\python.exe -m mcp_debugger
 ```
 
 > This writes to `~/.claude.json` (the Claude Code config). You can verify with `claude mcp list`.
