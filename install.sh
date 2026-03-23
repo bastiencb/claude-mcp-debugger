@@ -81,14 +81,18 @@ fi
 if [ -n "$CLAUDE_CMD" ]; then
     echo "Registering debugger with Claude Code..."
     # -e must come after the server name, before --
-    if "$CLAUDE_CMD" mcp add -s user -t stdio debugger -e "PYTHONPATH=$HOME/.claude" -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null; then
+    MCP_OUTPUT=$("$CLAUDE_CMD" mcp add -s user -t stdio debugger -e "PYTHONPATH=$HOME/.claude" -- "$VENV_PYTHON" -m mcp_debugger 2>&1) && {
         echo "MCP server registered via 'claude mcp add'."
-    else
-        echo ""
-        echo "Warning: 'claude mcp add' failed."
-        echo "Register manually from a terminal where Claude Code is available:"
-        echo "  claude mcp add -s user -t stdio debugger -e \"PYTHONPATH=\$HOME/.claude\" -- $VENV_PYTHON -m mcp_debugger"
-    fi
+    } || {
+        if echo "$MCP_OUTPUT" | grep -q "already exists"; then
+            echo "MCP server already registered — skipping."
+        else
+            echo ""
+            echo "Warning: 'claude mcp add' failed: $MCP_OUTPUT"
+            echo "Register manually from a terminal where Claude Code is available:"
+            echo "  claude mcp add -s user -t stdio debugger -e \"PYTHONPATH=\$HOME/.claude\" -- $VENV_PYTHON -m mcp_debugger"
+        fi
+    }
 else
     echo ""
     echo "Claude Code CLI not found."
