@@ -50,10 +50,14 @@ _ALL_STYLES_CONTEXT = (
     "Style 4 (Rich): see template below."
 )
 
+# IMPORTANT: "MUST" and "NEVER" are used intentionally to force compliance.
+# Agents tend to skip formatting when batching multiple tool calls.
+# Each template is a MANDATORY output format — no exceptions, no shortcuts.
+
 _RICH_STOP = (
     _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
-    "Format output as:\n"
+    "You MUST format EVERY call to this tool using this EXACT structure. NEVER skip it.\n"
     "  {icon} **`{tool_name}`** @ `{file}:{line}` in `{function}`\n"
     "  {human comment: what happened and where}\n"
     "  ```{lang from file extension}\n"
@@ -72,7 +76,7 @@ _RICH_STOP = (
 _RICH_VARS = (
     _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
-    "Format output as:\n"
+    "You MUST format EVERY call to this tool using this EXACT structure. NEVER skip it.\n"
     "  **`debug_variables`** @ `{file}:{line}` in `{function}`\n"
     "  {human comment: what scope and context}\n"
     "  ```json\n"
@@ -83,7 +87,7 @@ _RICH_VARS = (
 _RICH_EVAL = (
     _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
-    "Format output as:\n"
+    "You MUST format EVERY call to this tool using this EXACT structure. NEVER skip it.\n"
     "  **`debug_evaluate`** @ `{file}:{line}` in `{function}`\n"
     "  `{expression}` = `{value}` ({type})\n"
     "  ```json\n"
@@ -94,13 +98,40 @@ _RICH_EVAL = (
 _RICH_EXPAND = (
     _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
-    "Format output as:\n"
+    "You MUST format EVERY call to this tool using this EXACT structure. NEVER skip it.\n"
     "  **`debug_expand_variable`** @ `{file}:{line}` in `{function}`\n"
     "  {human comment: what is being expanded}\n"
     "  Tree view with ├── └── │ connectors\n"
     "  ```json\n"
     "  {full JSON output, indented}\n"
     "  ```"
+)
+
+
+_RICH_BREAKPOINTS = (
+    "\n\n--- All display styles ---\n"
+    "You MUST format EVERY call to this tool. NEVER silently consume the result.\n"
+    "Style 1 (Tables): markdown table | Line | Verified | Condition |.\n"
+    "Style 2 (Raw JSON): just the indented JSON.\n"
+    "Style 3 (Concise): 'Breakpoints set at file:line1, line2 (verified: yes/no)'.\n"
+    "Style 4 (Rich):\n"
+    "  ● **`debug_set_breakpoints`** @ `{file}`\n"
+    "  Breakpoint(s) set at line(s) {lines} — {human comment: why here}\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```"
+)
+
+_RICH_SIMPLE = (
+    "\n\n--- All display styles ---\n"
+    "You MUST format EVERY call to this tool. NEVER silently consume the result.\n"
+    "Style 4 (Rich):\n"
+    "  {icon} **`{tool_name}`** @ `{file}:{line}` in `{function}`\n"
+    "  {human comment}\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```\n"
+    "Icons: ◆ launch, ◇ status, ■ stop/terminate."
 )
 
 
@@ -128,8 +159,9 @@ def create_server() -> Any:
             "- All tools return structured JSON. Always unwrap the MCP {\"result\":\"...\"} wrapper.\n"
             "- Always include file:line in context (from JSON 'location' field, or retained "
             "from last stop event for tools that don't return location).\n"
-            "- Each tool's docstring contains the exact display template for Rich display mode.\n"
-            "  Follow it precisely — it is the authoritative format reference.\n\n"
+            "- EVERY tool call MUST produce formatted output. NEVER silently consume a result.\n"
+            "- Each tool's description contains the EXACT display template. "
+            "Follow it precisely for EVERY call — it is MANDATORY, not optional.\n\n"
             "FULL AUTO MODE:\n"
             "- Python/Node/Java: use wait=True (blocking) for continue/step commands.\n"
             "- Browser: debug_continue(wait=False), then poll debug_wait_for_event(timeout=10) "
@@ -143,7 +175,21 @@ def create_server() -> Any:
 
     # ── Session lifecycle ──────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(description="Launch a program under the debugger.\n\n"
+        "Args:\n"
+        "    program: Path to the source file to debug (.py, .js, .ts, .java), or a URL (http://...) for browser debugging.\n"
+        "    args: Command-line arguments for the program.\n"
+        "    cwd: Working directory (defaults to script's directory). For browser mode, used as webRoot for source maps.\n"
+        "    stop_on_entry: Pause at the first executable line (default: True).\n"
+        "    port: DAP port (default: 5679).\n"
+        "    language: Debug language: 'python', 'node', 'browser', 'java'. Auto-detected from extension/URL if omitted.\n"
+        "    python_path: Path to Python interpreter (Python only). Auto-detects project .venv if omitted.\n"
+        "    browser_path: Path to Chrome/Chromium (browser only). Auto-detects if omitted.\n"
+        "    headless: Run browser in headless mode (browser only, default: False).\n"
+        "    java_home: Path to JDK home (Java only). Auto-detects from JAVA_HOME or PATH if omitted.\n\n"
+        "Returns:\n"
+        "    JSON: {host, port, program, pid, language-specific keys (python/java/adapter),\n"
+        "           stopped_at?, reason?} or {error}.\n" + _RICH_SIMPLE)
     async def debug_launch(
         program: str,
         args: list[str] | None = None,
@@ -156,24 +202,7 @@ def create_server() -> Any:
         headless: bool = False,
         java_home: str | None = None,
     ) -> str:
-        """Launch a program under the debugger.
-
-        Args:
-            program: Path to the source file to debug (.py, .js, .ts, .java), or a URL (http://...) for browser debugging.
-            args: Command-line arguments for the program.
-            cwd: Working directory (defaults to script's directory). For browser mode, used as webRoot for source maps.
-            stop_on_entry: Pause at the first executable line (default: True).
-            port: DAP port (default: 5679).
-            language: Debug language: 'python', 'node', 'browser', 'java'. Auto-detected from extension/URL if omitted.
-            python_path: Path to Python interpreter (Python only). Auto-detects project .venv if omitted.
-            browser_path: Path to Chrome/Chromium (browser only). Auto-detects if omitted.
-            headless: Run browser in headless mode (browser only, default: False).
-            java_home: Path to JDK home (Java only). Auto-detects from JAVA_HOME or PATH if omitted.
-
-        Returns:
-            JSON: {host, port, program, pid, language-specific keys (python/java/adapter),
-                   stopped_at?, reason?} or {error}.
-        """
+        """Launch a program under the debugger."""
         session = get_session()
         try:
             info = await session.start(
@@ -198,41 +227,24 @@ def create_server() -> Any:
             logger.error("Failed to launch debug session: %s", e)
             return json.dumps({"error": str(e)})
 
-    @mcp.tool()
+    @mcp.tool(description="Stop the current debug session immediately (SIGTERM) and return program output.\n\nReturns:\n    JSON: {stopped: true, output: string|null}." + _RICH_SIMPLE)
     async def debug_stop() -> str:
-        """Stop the current debug session immediately (SIGTERM) and return program output.
-
-        Returns:
-            JSON: {stopped: true, output: string|null}.
-        """
+        """Stop the current debug session immediately (SIGTERM)."""
         output = await reset_session()
         return json.dumps({"stopped": True, "output": output or None})
 
-    @mcp.tool()
+    @mcp.tool(description="Gracefully terminate (KeyboardInterrupt). Cleanup handlers run. Falls back to SIGTERM after 3s.\n\nReturns:\n    JSON: {terminated: true, output: string|null}." + _RICH_SIMPLE)
     async def debug_terminate() -> str:
-        """Gracefully terminate the debugged program (sends KeyboardInterrupt).
-
-        Unlike debug_stop which kills the process immediately, debug_terminate
-        lets the program handle cleanup (context managers, finally blocks, atexit).
-        Falls back to SIGTERM after 3 seconds.
-
-        Returns:
-            JSON: {terminated: true, output: string|null}.
-        """
+        """Gracefully terminate the debugged program."""
         session = get_session()
         _require_active(session)
 
         output = await session.terminate()
         return json.dumps({"terminated": True, "output": output or None})
 
-    @mcp.tool()
+    @mcp.tool(description="Check if a debug session is active and get current state.\n\nReturns:\n    JSON: {active, program, threads: [{id, name}], current_location, capabilities: [string]}\n    or {error} if no session." + _RICH_SIMPLE)
     async def debug_status() -> str:
-        """Check if a debug session is active and get current state.
-
-        Returns:
-            JSON: {active, program, threads: [{id, name}], current_location, capabilities: [string]}
-            or {error} if no session.
-        """
+        """Check if a debug session is active and get current state."""
         session = get_session()
         if not session.is_active:
             return json.dumps({"error": "No active debug session. Use debug_launch first."})
@@ -259,7 +271,13 @@ def create_server() -> Any:
 
     # ── Breakpoints ────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(description="Set breakpoints in a source file.\n\nArgs:\n"
+        "    file: Path to the source file, or filename for browser scripts (e.g. 'app.js').\n"
+        "    lines: Line numbers where breakpoints should be set.\n"
+        "    conditions: Optional conditions per line, e.g. {\"17\": \"n > 10\"}.\n"
+        "    hit_conditions: Optional hit counts per line, e.g. {\"17\": \"5\"}.\n"
+        "    log_messages: Optional log messages per line, e.g. {\"17\": \"x = {x}\"}.\n\n"
+        "Returns:\n    JSON: {file, breakpoints: [{line, verified, condition?, hit_condition?, log_message?}]}." + _RICH_BREAKPOINTS)
     async def debug_set_breakpoints(
         file: str,
         lines: list[int],
@@ -267,23 +285,7 @@ def create_server() -> Any:
         hit_conditions: dict[str, str] | None = None,
         log_messages: dict[str, str] | None = None,
     ) -> str:
-        """Set breakpoints in a source file.
-
-        Args:
-            file: Path to the source file, or filename for browser scripts (e.g. 'app.js').
-                  For browser debugging, the filename is matched against loaded scripts automatically.
-            lines: Line numbers where breakpoints should be set.
-            conditions: Optional conditions per line, e.g. {"17": "n > 10"}.
-                        The breakpoint only triggers when the condition is true.
-            hit_conditions: Optional hit counts per line, e.g. {"17": "5"}.
-                            The breakpoint triggers on the Nth hit.
-            log_messages: Optional log messages per line, e.g. {"17": "x = {x}"}.
-                          Logs the message instead of stopping. Use {expr} for interpolation.
-
-        Returns:
-            JSON: {file, breakpoints: [{line, verified, condition?, hit_condition?, log_message?}]}
-            or {error}.
-        """
+        """Set breakpoints in a source file."""
         session = get_session()
         _require_active(session)
 
@@ -321,20 +323,12 @@ def create_server() -> Any:
             result_list.append(entry)
         return json.dumps({"file": file_path, "breakpoints": result_list})
 
-    @mcp.tool()
+    @mcp.tool(description="Set breakpoints on function names. Breaks when the function is called.\n\nArgs:\n    functions: Function names (e.g. [\"my_function\", \"MyClass.method\"]).\n    conditions: Optional conditions per function.\n\nReturns:\n    JSON: {breakpoints: [{function, verified, line?, condition?}]}." + _RICH_BREAKPOINTS)
     async def debug_set_function_breakpoints(
         functions: list[str],
         conditions: dict[str, str] | None = None,
     ) -> str:
-        """Set breakpoints on function names. Breaks when the function is called.
-
-        Args:
-            functions: Function names to break on (e.g. ["my_function", "MyClass.method"]).
-            conditions: Optional conditions per function, e.g. {"my_function": "x > 10"}.
-
-        Returns:
-            JSON: {breakpoints: [{function, verified, line?, condition?}]}.
-        """
+        """Set breakpoints on function names."""
         session = get_session()
         _require_active(session)
 
@@ -350,19 +344,11 @@ def create_server() -> Any:
             result_list.append(entry)
         return json.dumps({"breakpoints": result_list})
 
-    @mcp.tool()
+    @mcp.tool(description="Break on exceptions.\n\nArgs:\n    filters: 'raised' (all) or 'uncaught' (unhandled only). Default: ['uncaught'].\n\nReturns:\n    JSON: {filters: [string]}." + _RICH_BREAKPOINTS)
     async def debug_set_exception_breakpoints(
         filters: list[str] | None = None,
     ) -> str:
-        """Break on exceptions.
-
-        Args:
-            filters: Exception filter types. Options: 'raised' (all exceptions),
-                     'uncaught' (unhandled only). Default: ['uncaught'].
-
-        Returns:
-            JSON: {filters: [string]}.
-        """
+        """Break on exceptions."""
         session = get_session()
         _require_active(session)
         await session.client.set_exception_breakpoints(filters)
@@ -432,16 +418,9 @@ def create_server() -> Any:
 
     # ── Inspection ─────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(description="Get the current call stack.\n\nArgs:\n    thread_id: Thread to inspect (default: 1).\n\nReturns:\n    JSON: {frames: [{index, file, line, function, current: bool}]} or {error}." + _RICH_SIMPLE)
     async def debug_stacktrace(thread_id: int = 1) -> str:
-        """Get the current call stack.
-
-        Args:
-            thread_id: Thread to inspect (default: 1, the main thread).
-
-        Returns:
-            JSON: {frames: [{index, file, line, function, current: bool}]} or {error}.
-        """
+        """Get the current call stack."""
         session = get_session()
         _require_active(session)
 
@@ -534,7 +513,7 @@ def create_server() -> Any:
             result_dict["ref"] = var_ref
         return json.dumps(result_dict)
 
-    @mcp.tool()
+    @mcp.tool(description="Modify a variable's value during debugging.\n\nArgs:\n    name: Variable name to modify.\n    value: New value as expression (e.g., \"42\", '\"hello\"', \"[1,2,3]\").\n    scope: 'local' or 'global' (default: 'local').\n\nReturns:\n    JSON: {name, value, type} or {error}." + _RICH_EVAL)
     async def debug_set_variable(
         name: str,
         value: str,
@@ -542,18 +521,7 @@ def create_server() -> Any:
         thread_id: int = 1,
         frame_index: int = 0,
     ) -> str:
-        """Modify a variable's value during debugging.
-
-        Args:
-            name: Variable name to modify.
-            value: New value as a Python expression (e.g., "42", '"hello"', "[1,2,3]").
-            scope: 'local' or 'global' (default: 'local').
-            thread_id: Thread to use (default: 1).
-            frame_index: Stack frame index (default: 0, current frame).
-
-        Returns:
-            JSON: {name, value, type} or {error}.
-        """
+        """Modify a variable's value during debugging."""
         session = get_session()
         _require_active(session)
 
@@ -569,21 +537,13 @@ def create_server() -> Any:
         except Exception as e:
             return json.dumps({"error": f"setting {name}: {e}"})
 
-    @mcp.tool()
+    @mcp.tool(description="Jump to a specific line without executing intermediate code.\n\nArgs:\n    line: Target line number.\n    file: Source file path (defaults to current file).\n    thread_id: Thread to use (default: 1).\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_goto(
         line: int,
         file: str | None = None,
         thread_id: int = 1,
     ) -> str:
         """Jump to a specific line without executing intermediate code.
-
-        Args:
-            line: Target line number to jump to.
-            file: Source file path (defaults to current file).
-            thread_id: Thread to use (default: 1).
-
-        Returns:
-            JSON with stop reason, location, source context, and local variables.
         """
         session = get_session()
         _require_active(session)
@@ -613,17 +573,9 @@ def create_server() -> Any:
         await session.client.goto(thread_id, target["id"])
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Show source code around the current execution point.\n\nArgs:\n    lines_before: Lines before current (default: 5).\n    lines_after: Lines after current (default: 5).\n\nReturns:\n    JSON: {file, current_line, lines: [{number, text, current: bool}]}." + _RICH_SIMPLE)
     async def debug_source_context(lines_before: int = 5, lines_after: int = 5) -> str:
-        """Show source code around the current execution point.
-
-        Args:
-            lines_before: Number of lines to show before current line (default: 5).
-            lines_after: Number of lines to show after current line (default: 5).
-
-        Returns:
-            JSON: {file, current_line, lines: [{number, text, current: bool}]} or {error}.
-        """
+        """Show source code around the current execution point."""
         session = get_session()
         _require_active(session)
 
@@ -655,17 +607,9 @@ def create_server() -> Any:
             })
         return json.dumps({"file": file_path, "current_line": current_line, "lines": source_lines})
 
-    @mcp.tool()
+    @mcp.tool(description="Get the program's stdout/stderr output.\n\nArgs:\n    last_n: Last N lines (default: 50, None = all).\n    source: 'subprocess', 'dap', or 'all' (default).\n\nReturns:\n    JSON: {output: string|null}." + _RICH_SIMPLE)
     async def debug_output(last_n: int | None = 50, source: str = "all") -> str:
-        """Get the program's stdout/stderr output.
-
-        Args:
-            last_n: Number of last lines to return (default: 50, None = all).
-            source: 'subprocess' (pipe only), 'dap' (DAP output events only), 'all' (both).
-
-        Returns:
-            JSON: {output: string|null}.
-        """
+        """Get the program's stdout/stderr output."""
         session = get_session()
         parts = []
 
@@ -693,16 +637,9 @@ def create_server() -> Any:
         text = "\n".join(parts) if parts else None
         return json.dumps({"output": text})
 
-    @mcp.tool()
+    @mcp.tool(description="Get details about the current exception when stopped on one.\n\nArgs:\n    thread_id: Thread to inspect (default: 1).\n\nReturns:\n    JSON: {exception, message: string|null, traceback: string|null} or {error}." + _RICH_SIMPLE)
     async def debug_exception_info(thread_id: int = 1) -> str:
-        """Get details about the current exception when stopped on one.
-
-        Args:
-            thread_id: Thread to inspect (default: 1).
-
-        Returns:
-            JSON: {exception, message: string|null, traceback: string|null} or {error}.
-        """
+        """Get details about the current exception."""
         session = get_session()
         _require_active(session)
 
@@ -761,16 +698,9 @@ def create_server() -> Any:
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-    @mcp.tool()
+    @mcp.tool(description="List loaded modules.\n\nArgs:\n    filter: Optional substring to filter module names.\n\nReturns:\n    JSON: {modules: [{name, path}], count} or {error}." + _RICH_SIMPLE)
     async def debug_modules(filter: str | None = None) -> str:
-        """List loaded Python modules.
-
-        Args:
-            filter: Optional substring to filter module names.
-
-        Returns:
-            JSON: {modules: [{name, path}], count} or {error}.
-        """
+        """List loaded modules."""
         session = get_session()
         _require_active(session)
 
