@@ -6,6 +6,7 @@ via a language-specific Launcher, connects the DAP client, and handles cleanup.
 
 import asyncio
 import logging
+import os
 import signal
 import subprocess
 import sys
@@ -76,9 +77,11 @@ class DebugSession:
             Dict with session info (host, port, program, pid, ...).
         """
         if self.is_active:
+            logger.info("Stopping existing session before starting a new one")
             await self.stop()
 
         self._port = port or _DEFAULT_PORT
+        logger.info("Starting debug session for %s on port %d", program, self._port)
 
         # Detect language first (URLs need special handling)
         lang = language or detect_language(program)
@@ -180,9 +183,12 @@ class DebugSession:
 
     async def stop(self) -> str:
         """Stop the debug session and return captured output."""
+        program = self._program
+        logger.info("Stopping debug session for %s", program or "(no program)")
         output = ""
         try:
             if self.client.is_connected:
+                logger.debug("Sending DAP disconnect")
                 await self.client.dap_disconnect(terminate=True)
         except Exception:
             logger.debug("Error during DAP disconnect", exc_info=True)
@@ -196,12 +202,14 @@ class DebugSession:
 
         # Kill main debuggee process
         if self._process:
+            logger.info("Cleaning up debuggee process PID %d", self._process.pid)
             self._kill_process(self._process)
             output = "\n".join(self._output_lines)
             self._process = None
 
         # Kill adapter process if separate (e.g. js-debug)
         if self._adapter_process:
+            logger.info("Cleaning up adapter process PID %d", self._adapter_process.pid)
             self._kill_process(self._adapter_process)
             self._adapter_process = None
 
@@ -214,7 +222,7 @@ class DebugSession:
 
         self._program = None
         self._launcher = None
-        logger.info("Debug session stopped")
+        logger.info("Debug session stopped cleanly")
         return output
 
     async def _collect_output(self) -> None:
@@ -244,18 +252,42 @@ class DebugSession:
 
     @staticmethod
     def _kill_process(proc: subprocess.Popen) -> None:
-        """Kill a subprocess, handling platform differences."""
+        """Kill a subprocess and its children. Cross-platform."""
         if proc.poll() is not None:
             return
-        if _IS_WINDOWS:
-            proc.terminate()
-        else:
-            proc.send_signal(signal.SIGTERM)
+        pid = proc.pid
+        logger.info("Killing debug process PID %d", pid)
+        try:
+            if _IS_WINDOWS:
+                # Tree kill to clean up debugpy child processes
+                result = subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode != 0:
+                    logger.warning(
+                        "taskkill /T failed for PID %d: %s, falling back to terminate",
+                        pid, result.stderr.strip(),
+                    )
+                    proc.terminate()
+            else:
+                # Kill the process group to clean up child processes
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    proc.send_signal(signal.SIGTERM)
+        except Exception as e:
+            logger.warning("Error during SIGTERM for PID %d: %s", pid, e)
         try:
             proc.wait(timeout=5)
+            logger.debug("Process PID %d exited cleanly", pid)
         except subprocess.TimeoutExpired:
+            logger.warning("PID %d did not exit after SIGTERM, sending SIGKILL", pid)
             proc.kill()
-            proc.wait(timeout=2)
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.error("PID %d did not exit after SIGKILL", pid)
 
 
 # ── Singleton session manager ──────────────────────────────────
