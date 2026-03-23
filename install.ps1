@@ -62,23 +62,25 @@ Write-Host "Installing dependencies..."
 
 # ── Register MCP server ──────────────────────────────────────
 
+$ClaudeDir = "$env:USERPROFILE\.claude" -replace '\\', '/'
+
 $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
 if ($claudeCmd) {
     Write-Host "Registering debugger with Claude Code..."
     try {
-        & claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger 2>$null
+        & claude mcp add -s user -t stdio -e "PYTHONPATH=$ClaudeDir" debugger -- $VenvPython -m mcp_debugger 2>$null
         Write-Host "MCP server registered via 'claude mcp add'."
     } catch {
         Write-Host ""
         Write-Host "Warning: 'claude mcp add' failed."
         Write-Host "Register manually from a terminal where Claude Code is available:"
-        Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
+        Write-Host "  claude mcp add -s user -t stdio -e `"PYTHONPATH=$ClaudeDir`" debugger -- $VenvPython -m mcp_debugger"
     }
 } else {
     Write-Host ""
     Write-Host "Claude Code CLI not found in PATH."
     Write-Host "Open a terminal in VS Code (or where Claude Code is installed) and run:"
-    Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
+    Write-Host "  claude mcp add -s user -t stdio -e `"PYTHONPATH=$ClaudeDir`" debugger -- $VenvPython -m mcp_debugger"
 }
 
 # ── Done ───────────────────────────────────────────────────────

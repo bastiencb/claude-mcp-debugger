@@ -62,19 +62,19 @@ echo "Installing dependencies..."
 
 if command -v claude &>/dev/null; then
     echo "Registering debugger with Claude Code..."
-    claude mcp add -s user -t stdio debugger -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null && {
+    claude mcp add -s user -t stdio -e "PYTHONPATH=$HOME/.claude" debugger -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null && {
         echo "MCP server registered via 'claude mcp add'."
     } || {
         echo ""
         echo "Warning: 'claude mcp add' failed."
         echo "Register manually from a terminal where Claude Code is available:"
-        echo "  claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
+        echo "  claude mcp add -s user -t stdio -e \"PYTHONPATH=\$HOME/.claude\" debugger -- $VENV_PYTHON -m mcp_debugger"
     }
 else
     echo ""
     echo "Claude Code CLI not found in PATH."
     echo "Open a terminal in VS Code (or where Claude Code is installed) and run:"
-    echo "  claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
+    echo "  claude mcp add -s user -t stdio -e \"PYTHONPATH=\$HOME/.claude\" debugger -- $VENV_PYTHON -m mcp_debugger"
 fi
 
 # ── Done ───────────────────────────────────────────────────────
