@@ -5,7 +5,6 @@ $ErrorActionPreference = "Stop"
 
 $Repo = "https://github.com/bastiencb/claude-mcp-debugger.git"
 $InstallDir = "$env:USERPROFILE\.claude\mcp_debugger"
-$McpConfig = "$env:USERPROFILE\.claude\.mcp.json"
 
 Write-Host "=== claude-mcp-debugger installer ==="
 
@@ -29,7 +28,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# ── Install ────────────────────────────────────────────────────
+# ── Install files ─────────────────────────────────────────────
 
 if (Test-Path $InstallDir) {
     Write-Host "Updating existing installation in $InstallDir..."
@@ -47,36 +46,50 @@ if (Test-Path $InstallDir) {
     Remove-Item -Recurse -Force $TempDir
 }
 
-# ── MCP configuration ─────────────────────────────────────────
+# ── Create venv and install dependencies ──────────────────────
 
-if (-not (Test-Path $McpConfig)) {
-    Set-Content -Path $McpConfig -Value "{}"
+$VenvDir = "$InstallDir\.venv"
+$VenvPython = "$VenvDir\Scripts\python.exe"
+
+if (-not (Test-Path $VenvDir)) {
+    Write-Host "Creating virtual environment..."
+    & python -m venv $VenvDir
 }
 
-$cfg = Get-Content $McpConfig -Raw | ConvertFrom-Json
+Write-Host "Installing dependencies..."
+& $VenvPython -m pip install --quiet --upgrade pip
+& $VenvPython -m pip install --quiet "mcp[cli]>=1.0" debugpy
 
-if ($cfg.mcpServers -and $cfg.mcpServers.debugger) {
-    Write-Host "MCP config already contains 'debugger' entry, skipping."
+# ── Register MCP server ──────────────────────────────────────
+
+$claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+if ($claudeCmd) {
+    Write-Host "Registering debugger with Claude Code..."
+    try {
+        & claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger 2>$null
+        Write-Host "MCP server registered via 'claude mcp add'."
+    } catch {
+        Write-Host "Warning: 'claude mcp add' failed. You may need to register manually."
+        Write-Host "Run: claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
+    }
 } else {
-    Write-Host "Adding 'debugger' entry to $McpConfig..."
-    if (-not $cfg.mcpServers) {
-        $cfg | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue ([PSCustomObject]@{})
-    }
-    $claudeDir = "$env:USERPROFILE\.claude" -replace '\\', '/'
-    $debuggerEntry = [PSCustomObject]@{
-        command = "python"
-        args = @("-m", "mcp_debugger")
-        cwd = $claudeDir
-        env = [PSCustomObject]@{ PYTHONPATH = $claudeDir }
-    }
-    $cfg.mcpServers | Add-Member -NotePropertyName "debugger" -NotePropertyValue $debuggerEntry
-    $cfg | ConvertTo-Json -Depth 10 | Set-Content $McpConfig
+    Write-Host ""
+    Write-Host "Claude Code CLI not found in PATH."
+    Write-Host "Register the server manually by running:"
+    Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
+    Write-Host ""
+    Write-Host "Or add to ~\.claude.json under mcpServers:"
+    $VenvPythonFwd = $VenvPython -replace '\\', '/'
+    Write-Host "  `"debugger`": {"
+    Write-Host "    `"type`": `"stdio`","
+    Write-Host "    `"command`": `"$VenvPythonFwd`","
+    Write-Host "    `"args`": [`"-m`", `"mcp_debugger`"],"
+    Write-Host "    `"env`": {`"PYTHONPATH`": `"$($env:USERPROFILE -replace '\\', '/')/.claude`"}"
+    Write-Host "  }"
 }
 
 # ── Done ───────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Host "Installation complete!"
-Write-Host "The debugger will auto-install its dependencies (mcp, debugpy) on first use."
-Write-Host ""
 Write-Host "Restart Claude Code to activate the debugger."

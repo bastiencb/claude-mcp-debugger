@@ -60,49 +60,30 @@ irm https://raw.githubusercontent.com/bastiencb/claude-mcp-debugger/main/install
 <details>
 <summary><b>Claude Code — manual install</b></summary>
 
-**Linux / macOS:**
+**1. Copy files:**
 
 ```bash
 git clone https://github.com/bastiencb/claude-mcp-debugger.git
-cp -r claude-mcp-debugger/mcp_debugger ~/.claude/mcp_debugger
+cp -r claude-mcp-debugger/mcp_debugger ~/.claude/mcp_debugger   # Linux/macOS
+# Windows: Copy-Item -Recurse claude-mcp-debugger\mcp_debugger $env:USERPROFILE\.claude\mcp_debugger
 ```
 
-Add to `~/.claude/.mcp.json`:
+**2. Create venv and install dependencies:**
 
-```json
-{
-  "mcpServers": {
-    "debugger": {
-      "command": "python3",
-      "args": ["-m", "mcp_debugger"],
-      "cwd": "/home/you/.claude",
-      "env": { "PYTHONPATH": "/home/you/.claude" }
-    }
-  }
-}
+```bash
+python3 -m venv ~/.claude/mcp_debugger/.venv
+~/.claude/mcp_debugger/.venv/bin/python3 -m pip install "mcp[cli]>=1.0" debugpy
+# Windows: use .venv\Scripts\python.exe instead of .venv/bin/python3
 ```
 
-**Windows (PowerShell):**
+**3. Register with Claude Code:**
 
-```powershell
-git clone https://github.com/bastiencb/claude-mcp-debugger.git
-Copy-Item -Recurse claude-mcp-debugger\mcp_debugger $env:USERPROFILE\.claude\mcp_debugger
+```bash
+claude mcp add -s user -t stdio debugger -- ~/.claude/mcp_debugger/.venv/bin/python3 -m mcp_debugger
+# Windows: claude mcp add -s user -t stdio debugger -- %USERPROFILE%\.claude\mcp_debugger\.venv\Scripts\python.exe -m mcp_debugger
 ```
 
-Add to `%USERPROFILE%\.claude\.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "debugger": {
-      "command": "python",
-      "args": ["-m", "mcp_debugger"],
-      "cwd": "C:/Users/you/.claude",
-      "env": { "PYTHONPATH": "C:/Users/you/.claude" }
-    }
-  }
-}
-```
+> This writes to `~/.claude.json` (the Claude Code config). You can verify with `claude mcp list`.
 
 Then restart Claude Code.
 

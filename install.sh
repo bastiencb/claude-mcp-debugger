@@ -6,7 +6,6 @@ set -euo pipefail
 
 REPO="https://github.com/bastiencb/claude-mcp-debugger.git"
 INSTALL_DIR="$HOME/.claude/mcp_debugger"
-MCP_CONFIG="$HOME/.claude/.mcp.json"
 
 # ── Checks ─────────────────────────────────────────────────────
 
@@ -30,7 +29,7 @@ if ! command -v git &>/dev/null; then
     exit 1
 fi
 
-# ── Install ────────────────────────────────────────────────────
+# ── Install files ─────────────────────────────────────────────
 
 if [ -d "$INSTALL_DIR" ]; then
     echo "Updating existing installation in $INSTALL_DIR..."
@@ -45,44 +44,47 @@ else
     rm -rf /tmp/claude-mcp-debugger-install
 fi
 
-# ── MCP configuration ─────────────────────────────────────────
+# ── Create venv and install dependencies ──────────────────────
 
-if [ ! -f "$MCP_CONFIG" ]; then
-    echo '{}' > "$MCP_CONFIG"
+VENV_DIR="$INSTALL_DIR/.venv"
+VENV_PYTHON="$VENV_DIR/bin/python3"
+
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv "$VENV_DIR"
 fi
 
-# Check if already configured
-if python3 -c "
-import json, sys
-with open('$MCP_CONFIG') as f:
-    cfg = json.load(f)
-if 'debugger' in cfg.get('mcpServers', {}):
-    sys.exit(0)
-sys.exit(1)
-" 2>/dev/null; then
-    echo "MCP config already contains 'debugger' entry, skipping."
+echo "Installing dependencies..."
+"$VENV_PYTHON" -m pip install --quiet --upgrade pip
+"$VENV_PYTHON" -m pip install --quiet "mcp[cli]>=1.0" debugpy
+
+# ── Register MCP server ──────────────────────────────────────
+
+if command -v claude &>/dev/null; then
+    echo "Registering debugger with Claude Code..."
+    claude mcp add -s user -t stdio debugger -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null && {
+        echo "MCP server registered via 'claude mcp add'."
+    } || {
+        echo "Warning: 'claude mcp add' failed. You may need to register manually."
+        echo "Run: claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
+    }
 else
-    echo "Adding 'debugger' entry to $MCP_CONFIG..."
-    python3 -c "
-import json
-with open('$MCP_CONFIG') as f:
-    cfg = json.load(f)
-cfg.setdefault('mcpServers', {})['debugger'] = {
-    'command': 'python3',
-    'args': ['-m', 'mcp_debugger'],
-    'cwd': '$HOME/.claude',
-    'env': {'PYTHONPATH': '$HOME/.claude'}
-}
-with open('$MCP_CONFIG', 'w') as f:
-    json.dump(cfg, f, indent=2)
-    f.write('\n')
-"
+    echo ""
+    echo "Claude Code CLI not found in PATH."
+    echo "Register the server manually by running:"
+    echo "  claude mcp add -s user -t stdio debugger -- $VENV_PYTHON -m mcp_debugger"
+    echo ""
+    echo "Or add to ~/.claude.json under mcpServers:"
+    echo "  \"debugger\": {"
+    echo "    \"type\": \"stdio\","
+    echo "    \"command\": \"$VENV_PYTHON\","
+    echo "    \"args\": [\"-m\", \"mcp_debugger\"],"
+    echo "    \"env\": {\"PYTHONPATH\": \"$HOME/.claude\"}"
+    echo "  }"
 fi
 
 # ── Done ───────────────────────────────────────────────────────
 
 echo ""
 echo "Installation complete!"
-echo "The debugger will auto-install its dependencies (mcp, debugpy) on first use."
-echo ""
 echo "Restart Claude Code to activate the debugger."
