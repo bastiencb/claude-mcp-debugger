@@ -62,10 +62,16 @@ irm https://raw.githubusercontent.com/bastiencb/claude-mcp-debugger/main/install
 
 **1. Copiar archivos:**
 
+Linux / macOS:
 ```bash
 git clone https://github.com/bastiencb/claude-mcp-debugger.git
-cp -r claude-mcp-debugger/mcp_debugger ~/.claude/mcp_debugger   # Linux/macOS
-# Windows: Copy-Item -Recurse claude-mcp-debugger\mcp_debugger $env:USERPROFILE\.claude\mcp_debugger
+cp -r claude-mcp-debugger/mcp_debugger ~/.claude/mcp_debugger
+```
+
+Windows (PowerShell):
+```powershell
+git clone https://github.com/bastiencb/claude-mcp-debugger.git
+Copy-Item -Recurse claude-mcp-debugger\mcp_debugger $env:USERPROFILE\.claude\mcp_debugger
 ```
 
 **2. Crear venv e instalar dependencias:**
