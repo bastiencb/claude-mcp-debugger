@@ -109,24 +109,28 @@ Then restart Claude Code.
 <details>
 <summary><b>Other MCP clients (Cursor, Windsurf, custom agents...)</b></summary>
 
-Clone the repository anywhere and point your MCP client to the server:
+Clone the repository and set up the venv:
 
 ```bash
 git clone https://github.com/bastiencb/claude-mcp-debugger.git /path/to/claude-mcp-debugger
+cd /path/to/claude-mcp-debugger/mcp_debugger
+python3 -m venv .venv
+.venv/bin/python3 -m pip install "mcp[cli]>=1.0" debugpy
 ```
 
 Add to your client's MCP configuration:
 
 ```json
 {
-  "command": "python3",
+  "command": "/path/to/claude-mcp-debugger/mcp_debugger/.venv/bin/python3",
   "args": ["-m", "mcp_debugger"],
-  "cwd": "/path/to/claude-mcp-debugger",
   "env": { "PYTHONPATH": "/path/to/claude-mcp-debugger" }
 }
 ```
 
-The server exposes 22 tools prefixed with `debug_` — any MCP client can use them.
+On Windows, use `.venv\Scripts\python.exe` instead of `.venv/bin/python3`.
+
+The server exposes 23 tools prefixed with `debug_` — any MCP client can use them.
 
 </details>
 
