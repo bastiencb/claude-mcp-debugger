@@ -36,6 +36,60 @@ def _get_mcp():
     return _mcp
 
 
+# ── Rich display templates (injected into tool descriptions) ───
+# These are appended to tool descriptions so the agent sees them
+# every time it calls a tool, not just once in the server instructions.
+
+_RICH_STOP = (
+    "\n\n--- Rich display (style 4) ---\n"
+    "Format output as:\n"
+    "  {icon} **`{tool_name}`** @ `{file}:{line}` in `{function}`\n"
+    "  {human comment: what happened and where}\n"
+    "  ```{lang from file extension}\n"
+    "    NN │ previous line\n"
+    "  → NN │ current line\n"
+    "    NN │ next line\n"
+    "  ```\n"
+    "  {human comment: what the data means}\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```\n"
+    "Icons: ● breakpoint, → step, ✕ exception, ■ stop.\n"
+    "Include stacktrace (#0 func file:line) only when multiple frames."
+)
+
+_RICH_VARS = (
+    "\n\n--- Rich display (style 4) ---\n"
+    "Format output as:\n"
+    "  **`debug_variables`** @ `{file}:{line}` in `{function}`\n"
+    "  {human comment: what scope and context}\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```"
+)
+
+_RICH_EVAL = (
+    "\n\n--- Rich display (style 4) ---\n"
+    "Format output as:\n"
+    "  **`debug_evaluate`** @ `{file}:{line}` in `{function}`\n"
+    "  `{expression}` = `{value}` ({type})\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```"
+)
+
+_RICH_EXPAND = (
+    "\n\n--- Rich display (style 4) ---\n"
+    "Format output as:\n"
+    "  **`debug_expand_variable`** @ `{file}:{line}` in `{function}`\n"
+    "  {human comment: what is being expanded}\n"
+    "  Tree view with ├── └── │ connectors\n"
+    "  ```json\n"
+    "  {full JSON output, indented}\n"
+    "  ```"
+)
+
+
 def create_server() -> Any:
     """Create and configure the MCP server with all debug tools."""
     FastMCP = _get_mcp()
@@ -44,87 +98,32 @@ def create_server() -> Any:
         instructions=(
             "Debug programs like a VS Code developer. "
             "Supports Python (.py), Node.js (.js/.ts), Java (.java), "
-            "and browser JavaScript (URLs). "
-            "Start a session with debug_launch, set breakpoints, "
-            "step through code, inspect variables, and evaluate expressions.\n\n"
-            "OUTPUT FORMAT: All tools return structured JSON for programmatic parsing. "
-            "Each tool's docstring documents its return schema.\n\n"
-            "DISPLAY GUIDELINES: When presenting debug results to a user for the first time, "
-            "ask their preferred output style among these options:\n\n"
-            "1. Formatted tables and trees — variables as aligned tables (Name | Type | Value), "
-            "objects as trees (├── └── │), source with → on current line, JSON indented for launch/status.\n\n"
-            "2. Raw JSON — the structured JSON output as-is, properly indented.\n\n"
-            "3. Concise summary — one-line human context + essential values only "
-            "(e.g. 'Stopped at App.java:46 main() | locals: users=ArrayList(4), avg=31').\n\n"
-            "4. Rich display (recommended) — human-readable rendering with full JSON at the end. "
-            "Structure in order:\n"
-            "   a) Human comment about the current action and code location (what happened, where).\n"
-            "   b) Stacktrace in classic format (always include when multiple frames, omit for single-frame):\n"
-            "      #0  funcName     file:line\n"
-            "      #1  caller       file:line\n"
-            "   c) Source context as a syntax-highlighted code block with → on the current line:\n"
-            "      ```java\n"
-            "        45 │ List<User> users = new ArrayList<>();\n"
-            "      → 46 │ int avg = computeAverage(users);\n"
-            "        47 │ System.out.println(avg);\n"
-            "      ```\n"
-            "      Use the language from the file extension for syntax highlighting.\n"
-            "   d) Human comment about the data (what the variables mean, what to note).\n"
-            "   e) The raw JSON output, properly indented in a ```json code block.\n"
-            "      This is the full structured JSON — always present, never hidden in <details>.\n\n"
-            "   For expand results: use an indented tree with ├── └── │ connectors, "
-            "then the JSON below.\n"
-            "   For evaluate results: show `expression` = `value` (type), then the JSON below.\n\n"
-            "For ALL styles: always include file and line in the context when available "
-            "(from the JSON 'location' field, or retained from the last stop event for tools like "
-            "debug_expand_variable/debug_evaluate that don't return a location).\n\n"
-            "Remember the user's preferences for the rest of the session. "
-            "Never show the raw MCP wrapper ({\"result\":\"...\"}) — always unwrap and format.\n\n"
-            "IMPORTANT: When asking these questions, prefer using structured question tools "
-            "(e.g. AskUserQuestion with clickable options) over free-text prompts, so the user "
-            "can simply click their choice instead of typing. If no such tool is available, "
-            "present numbered options.\n\n"
-            "DEBUG MODE: After asking the display style, also ask the user their preferred "
-            "debug mode. This applies to ALL languages (Python, Node.js, Java, browser):\n\n"
-            "1. Full auto — the agent drives the entire debug session autonomously. "
-            "For scripted programs (Python, Node.js, Java): uses wait=True (blocking) for all "
-            "continue/step commands. The agent sets strategic breakpoints, steps through code, "
-            "inspects variables, evaluates hypotheses, and reports findings without user intervention.\n"
-            "For browser/interactive programs: the agent sets breakpoints, then calls "
-            "debug_continue(wait=False) followed immediately by debug_wait_for_event(timeout=300). "
-            "This silently waits for the user to interact with the page (click, type, navigate). "
-            "When a breakpoint fires, the agent automatically inspects variables, evaluates "
-            "expressions, reports findings, and resumes with the same pattern. "
-            "The user never needs to signal — the agent detects events automatically.\n"
-            "Best for: all debugging — 'find the bug in X', browser debugging, automated analysis.\n\n"
-            "2. Interactive — the user explicitly controls the debug flow step by step. "
-            "Uses wait=False (non-blocking) for continue commands. The agent sets breakpoints "
-            "and tells the user what to do next. The user signals when they have acted, "
-            "then the agent checks debug_status and inspects the state. "
-            "Best for: learning/teaching, step-by-step walkthroughs where the user wants "
-            "to understand each step and decide what to inspect.\n\n"
-            "Full auto browser workflow:\n"
-            "  1. debug_launch(url) — open Chrome\n"
-            "  2. debug_set_breakpoints — set breakpoints in JS files\n"
-            "  3. debug_continue(wait=False) — resume execution\n"
-            "  4. Poll with debug_wait_for_event(timeout=10) in a loop. Between each call, "
-            "print a brief status message so the user knows you are waiting "
-            "(e.g. 'Waiting for interaction... (20s)'). This avoids a long silent block "
-            "that looks stuck. When the tool returns with a stop reason (not 'running'), "
-            "break out of the loop.\n"
-            "  5. When breakpoint fires: inspect variables, evaluate, report findings\n"
-            "  6. Repeat from step 3\n\n"
-            "Interactive mode workflow:\n"
-            "  1. debug_launch — start the program\n"
-            "  2. debug_set_breakpoints — set breakpoints\n"
-            "  3. debug_continue(wait=False) — resume, return immediately\n"
-            "  4. Tell the user what to do (click, type, provide input, etc.)\n"
-            "  5. When the user signals, call debug_status. "
-            "If stopped, inspect. If still running, call debug_wait_for_event(timeout=10) "
-            "in a polling loop with status messages.\n"
-            "  6. After inspection, debug_continue(wait=False) to resume.\n\n"
-            "Default: Full auto for all languages. Suggest Interactive only if the user "
-            "explicitly asks for step-by-step control."
+            "and browser JavaScript (URLs).\n\n"
+            "FIRST USE SETUP: Before the first debug call, ask the user two questions "
+            "using AskUserQuestion with clickable options (never free-text prompts):\n\n"
+            "Question 1 — Display style:\n"
+            "  1. Tables and trees — variables as markdown tables, objects as ├── └── trees\n"
+            "  2. Raw JSON — structured JSON output as-is, indented\n"
+            "  3. Concise — one-line summary (e.g. 'Stopped at App.java:46 | avg=31')\n"
+            "  4. Rich display [recommended] — human comment + source code + data comment + JSON\n\n"
+            "Question 2 — Debug mode:\n"
+            "  1. Full auto [recommended] — agent drives everything autonomously\n"
+            "  2. Interactive — user controls each step\n\n"
+            "Remember both choices for the entire session.\n\n"
+            "OUTPUT RULES:\n"
+            "- All tools return structured JSON. Always unwrap the MCP {\"result\":\"...\"} wrapper.\n"
+            "- Always include file:line in context (from JSON 'location' field, or retained "
+            "from last stop event for tools that don't return location).\n"
+            "- Each tool's docstring contains the exact display template for Rich display mode.\n"
+            "  Follow it precisely — it is the authoritative format reference.\n\n"
+            "FULL AUTO MODE:\n"
+            "- Python/Node/Java: use wait=True (blocking) for continue/step commands.\n"
+            "- Browser: debug_continue(wait=False), then poll debug_wait_for_event(timeout=10) "
+            "in a loop. Print status between calls ('Waiting for interaction... 20s'). "
+            "When breakpoint fires, inspect and report automatically, then resume.\n\n"
+            "INTERACTIVE MODE:\n"
+            "- debug_continue(wait=False), tell user what to do, check debug_status when signaled.\n"
+            "- If still running, poll debug_wait_for_event(timeout=10) with status messages."
         ),
     )
 
@@ -357,7 +356,7 @@ def create_server() -> Any:
 
     # ── Execution control ──────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(description="Pause a running thread. Use when the program is running (e.g., stuck in a loop).\n\nArgs:\n    thread_id: Thread to pause (default: 1).\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_pause(thread_id: int = 1) -> str:
         """Pause a running thread. Use when the program is running (e.g., stuck in a loop).
 
@@ -365,9 +364,10 @@ def create_server() -> Any:
             thread_id: Thread to pause (default: 1, the main thread).
 
         Returns:
-            JSON: {reason, location: {file, line, function}, source_context: [{number, text, current}],
-            locals: [{name, type, value, ref?}], exception?: {type, message, traceback}}
-            or {terminated: true, output} or {running: true, message}.
+            JSON {reason, location, source_context, locals}.
+
+        Rich display (style 4): ■ **`debug_pause`** @ `file:line` in `func()`
+        then human comment, source code block with → marker, data comment, and ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -375,20 +375,21 @@ def create_server() -> Any:
         await session.client.pause(thread_id)
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Resume execution until next breakpoint, exception, or program end.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately (browser/interactive).\n\nReturns:\n    wait=True: JSON {reason, location, source_context, locals, exception?}.\n    wait=False: JSON {resumed: true, message}." + _RICH_STOP)
     async def debug_continue(wait: bool = True) -> str:
         """Resume execution until next breakpoint, exception, or program end.
 
         Args:
             wait: If True (default), block until the debugger stops and return full context.
-                  If False, resume execution and return immediately — useful for interactive
-                  browser debugging where the user triggers breakpoints by interacting with the page.
-                  After wait=False, use debug_status to check if the debugger has stopped,
-                  or debug_wait_for_event to block until the next breakpoint.
+                  If False, resume and return immediately (browser/interactive debugging).
 
         Returns:
-            If wait=True: JSON with stop reason, location, source context, and local variables.
-            If wait=False: JSON {resumed: true, message: string}.
+            If wait=True: JSON {reason, location, source_context, locals, exception?}.
+            If wait=False: JSON {resumed: true, message}.
+
+        Rich display (style 4): icon + **`debug_continue`** @ `file:line` in `func()`
+        then human comment, source code block with → marker, data comment, and ```json block.
+        Icons: ● breakpoint, → step, ✕ exception.
         """
         session = get_session()
         _require_active(session)
@@ -398,7 +399,7 @@ def create_server() -> Any:
             return json.dumps({"resumed": True, "message": "Execution resumed. Use debug_status to check state or debug_wait_for_event to wait for next breakpoint."})
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Step over: execute the current line and stop at the next one.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_over(wait: bool = True) -> str:
         """Step over: execute the current line and stop at the next one.
 
@@ -406,7 +407,10 @@ def create_server() -> Any:
             wait: If True (default), block until stopped. If False, return immediately.
 
         Returns:
-            JSON with stop reason, location, source context, and local variables.
+            JSON {reason, location, source_context, locals}.
+
+        Rich display (style 4): → **`debug_step_over`** @ `file:line` in `func()`
+        then human comment, source code block with → marker, data comment, and ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -416,7 +420,7 @@ def create_server() -> Any:
             return json.dumps({"resumed": True, "message": "Step over initiated."})
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Step into: enter the function call on the current line.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_into(wait: bool = True) -> str:
         """Step into: enter the function call on the current line.
 
@@ -424,7 +428,10 @@ def create_server() -> Any:
             wait: If True (default), block until stopped. If False, return immediately.
 
         Returns:
-            JSON with stop reason, location, source context, and local variables.
+            JSON {reason, location, source_context, locals}.
+
+        Rich display (style 4): → **`debug_step_into`** @ `file:line` in `func()`
+        then human comment, source code block with → marker, data comment, and ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -434,7 +441,7 @@ def create_server() -> Any:
             return json.dumps({"resumed": True, "message": "Step into initiated."})
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Step out: run until the current function returns.\n\nArgs:\n    wait: If True (default), block until stopped. If False, return immediately.\n\nReturns:\n    JSON {reason, location, source_context, locals}." + _RICH_STOP)
     async def debug_step_out(wait: bool = True) -> str:
         """Step out: run until the current function returns.
 
@@ -442,7 +449,10 @@ def create_server() -> Any:
             wait: If True (default), block until stopped. If False, return immediately.
 
         Returns:
-            JSON with stop reason, location, source context, and local variables.
+            JSON {reason, location, source_context, locals}.
+
+        Rich display (style 4): → **`debug_step_out`** @ `file:line` in `func()`
+        then human comment, source code block with → marker, data comment, and ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -452,22 +462,20 @@ def create_server() -> Any:
             return json.dumps({"resumed": True, "message": "Step out initiated."})
         return await _wait_and_report(session)
 
-    @mcp.tool()
+    @mcp.tool(description="Wait for the debugger to stop (breakpoint, exception, or termination).\n\nUse after debug_continue(wait=False) in browser/interactive debugging.\n\nArgs:\n    timeout: Maximum seconds to wait (default: 300).\n\nReturns:\n    JSON {reason, location, source_context, locals}.\n    If timeout: {running: true, message}." + _RICH_STOP)
     async def debug_wait_for_event(timeout: float = 300.0) -> str:
         """Wait for the debugger to stop (breakpoint, exception, or termination).
 
-        Use after debug_continue(wait=False) in interactive browser debugging:
-        the user interacts with the page, and this tool blocks until a breakpoint
-        is hit or the timeout is reached.
+        Use after debug_continue(wait=False) in browser/interactive debugging.
 
         Args:
             timeout: Maximum seconds to wait (default: 300 = 5 minutes).
-                     For browser debugging, the user may take time to interact.
 
         Returns:
-            JSON with stop reason, location, source context, and local variables
-            (same format as debug_continue with wait=True).
-            If timeout: {running: true, message: string}.
+            JSON {reason, location, source_context, locals}.
+            If timeout: {running: true, message}.
+
+        Rich display (style 4): same as debug_continue — icon + context + source + JSON.
         """
         session = get_session()
         _require_active(session)
@@ -504,7 +512,7 @@ def create_server() -> Any:
             })
         return json.dumps({"frames": result_frames})
 
-    @mcp.tool()
+    @mcp.tool(description="Inspect variables in the current scope.\n\nArgs:\n    scope: 'local' or 'global' (default: 'local').\n    thread_id: Thread to inspect (default: 1).\n    frame_index: Stack frame index, 0 = current.\n\nReturns:\n    JSON: {scope, location, variables: [{name, type, value, ref?}]}.\n    Variables with ref > 0 can be expanded with debug_expand_variable." + _RICH_VARS)
     async def debug_variables(
         scope: str = "local",
         thread_id: int = 1,
@@ -518,8 +526,11 @@ def create_server() -> Any:
             frame_index: Stack frame index, 0 = current (default: 0).
 
         Returns:
-            JSON: {scope, location, variables: [{name, type, value, ref?}]} or {error}.
+            JSON: {scope, location, variables: [{name, type, value, ref?}]}.
             Variables with ref > 0 can be expanded with debug_expand_variable.
+
+        Rich display (style 4): **`debug_variables`** @ `file:line` in `func()`
+        then human comment about scope/context, then ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -561,21 +572,24 @@ def create_server() -> Any:
             "variables": var_list,
         })
 
-    @mcp.tool()
+    @mcp.tool(description="Evaluate an expression in the debugger context.\n\nArgs:\n    expression: Expression to evaluate (e.g., 'len(my_list)', 'x + y').\n    frame_index: Stack frame for context (0 = current).\n    thread_id: Thread to use (default: 1).\n\nReturns:\n    JSON: {expression, type, value, ref?}." + _RICH_EVAL)
     async def debug_evaluate(
         expression: str,
         frame_index: int = 0,
         thread_id: int = 1,
     ) -> str:
-        """Evaluate a Python expression in the debugger context.
+        """Evaluate an expression in the debugger context.
 
         Args:
-            expression: Python expression to evaluate (e.g., 'len(my_list)', 'x + y').
+            expression: Expression to evaluate (e.g., 'len(my_list)', 'x + y').
             frame_index: Stack frame for context (0 = current frame).
             thread_id: Thread to use (default: 1).
 
         Returns:
-            JSON: {expression, type, value, ref?}. If ref is present, use debug_expand_variable to drill in.
+            JSON: {expression, type, value, ref?}. If ref is present, use debug_expand_variable.
+
+        Rich display (style 4): **`debug_evaluate`** @ `file:line` in `func()`
+        then `expression` = `value` (type), then ```json block.
         """
         session = get_session()
         _require_active(session)
@@ -784,7 +798,7 @@ def create_server() -> Any:
             "traceback": traceback_str or None,
         })
 
-    @mcp.tool()
+    @mcp.tool(description="Expand a complex variable (dict, list, object) to see its contents.\n\nUse the ref=N value from debug_variables or debug_evaluate.\n\nArgs:\n    variables_reference: The reference ID from the 'ref' field.\n    max_depth: Levels of nesting (default: 1). 1=children, 2-3=most needs, 4+=deep.\n    skip_internals: Filter out __dunder__ and builtins (default: True).\n\nReturns:\n    JSON: {children: [{name, type, value, ref?, children?: [...]}]}." + _RICH_EXPAND)
     async def debug_expand_variable(
         variables_reference: int, max_depth: int = 1, skip_internals: bool = True,
     ) -> str:
@@ -793,24 +807,17 @@ def create_server() -> Any:
         Use the ref=N value from debug_variables or debug_evaluate output.
 
         Args:
-            variables_reference: The reference ID from the "ref" field in debug_variables or debug_evaluate output.
-            max_depth: How many levels of nesting to expand (default: 1, no hard limit).
-                - 1: immediate children only (keys of a dict, items of a list, attributes of an object).
-                - 2-3: good for most inspection needs.
-                - 4+: useful for deeply nested structures (JSON configs, ASTs, ORMs).
-                Circular references are detected and short-circuited automatically.
-                Use debug_evaluate for direct access to a known path (e.g. 'obj.a.b.c.d.e').
-            skip_internals: Filter out Python internal groups (default: True).
-                When True, hides 'special variables' (__dunder__ methods like __class__,
-                __eq__, __repr__...) and 'function variables' (builtin methods like
-                .keys(), .append(), .copy()...) that debugpy exposes for every object.
-                This drastically reduces output noise — a dict goes from ~50 lines to
-                just its keys and values. Set to False when you need to inspect an
-                object's full Python interface.
+            variables_reference: The reference ID from the "ref" field.
+            max_depth: Levels of nesting to expand (default: 1, no hard limit).
+                1=immediate children, 2-3=most needs, 4+=deep structures.
+                Circular references are auto-detected.
+            skip_internals: Filter out __dunder__ and builtin methods (default: True).
 
         Returns:
-            JSON: {children: [{name, type, value, ref?, children?: [...recursive]}]} or {error}.
-            Each child with a ref can be further expanded. Children are only populated up to max_depth.
+            JSON: {children: [{name, type, value, ref?, children?: [...]}]}.
+
+        Rich display (style 4): **`debug_expand_variable`** @ `file:line` in `func()`
+        then human comment, tree view with ├── └── │ connectors, then ```json block.
         """
         session = get_session()
         _require_active(session)
