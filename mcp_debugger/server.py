@@ -36,11 +36,22 @@ def _get_mcp():
     return _mcp
 
 
-# ── Rich display templates (injected into tool descriptions) ───
-# These are appended to tool descriptions so the agent sees them
-# every time it calls a tool, not just once in the server instructions.
+# ── Display templates (injected into tool descriptions) ────────
+# Appended to tool descriptions so the agent sees them at every call.
+
+# Common to ALL styles: always show file, line, and function context.
+_ALL_STYLES_CONTEXT = (
+    "\n\n--- All display styles ---\n"
+    "ALWAYS include in your output: file name, line number, and function name.\n"
+    "Style 1 (Tables): file:line in func() header, then markdown table | Var | Type | Value |.\n"
+    "Style 2 (Raw JSON): just the indented JSON — it already contains location.\n"
+    "Style 3 (Concise): one line with file:line, func, and key variable values.\n"
+    "  Example: 'Stopped at app.py:42 in main() | data={...}, total=274'\n"
+    "Style 4 (Rich): see template below."
+)
 
 _RICH_STOP = (
+    _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
     "Format output as:\n"
     "  {icon} **`{tool_name}`** @ `{file}:{line}` in `{function}`\n"
@@ -59,6 +70,7 @@ _RICH_STOP = (
 )
 
 _RICH_VARS = (
+    _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
     "Format output as:\n"
     "  **`debug_variables`** @ `{file}:{line}` in `{function}`\n"
@@ -69,6 +81,7 @@ _RICH_VARS = (
 )
 
 _RICH_EVAL = (
+    _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
     "Format output as:\n"
     "  **`debug_evaluate`** @ `{file}:{line}` in `{function}`\n"
@@ -79,6 +92,7 @@ _RICH_EVAL = (
 )
 
 _RICH_EXPAND = (
+    _ALL_STYLES_CONTEXT +
     "\n\n--- Rich display (style 4) ---\n"
     "Format output as:\n"
     "  **`debug_expand_variable`** @ `{file}:{line}` in `{function}`\n"
