@@ -62,6 +62,9 @@ Write-Host "Installing dependencies..."
 
 # ── Register MCP server ──────────────────────────────────────
 
+$ClaudeJson = "$env:USERPROFILE\.claude.json"
+$writeDirectly = $false
+
 $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
 if ($claudeCmd) {
     Write-Host "Registering debugger with Claude Code..."
@@ -69,23 +72,37 @@ if ($claudeCmd) {
         & claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger 2>$null
         Write-Host "MCP server registered via 'claude mcp add'."
     } catch {
-        Write-Host "Warning: 'claude mcp add' failed. You may need to register manually."
-        Write-Host "Run: claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
+        Write-Host "Warning: 'claude mcp add' failed, writing config directly..."
+        $writeDirectly = $true
     }
 } else {
-    Write-Host ""
-    Write-Host "Claude Code CLI not found in PATH."
-    Write-Host "Register the server manually by running:"
-    Write-Host "  claude mcp add -s user -t stdio debugger -- $VenvPython -m mcp_debugger"
-    Write-Host ""
-    Write-Host "Or add to ~\.claude.json under mcpServers:"
+    $writeDirectly = $true
+}
+
+if ($writeDirectly) {
+    Write-Host "Writing debugger config to $ClaudeJson..."
     $VenvPythonFwd = $VenvPython -replace '\\', '/'
-    Write-Host "  `"debugger`": {"
-    Write-Host "    `"type`": `"stdio`","
-    Write-Host "    `"command`": `"$VenvPythonFwd`","
-    Write-Host "    `"args`": [`"-m`", `"mcp_debugger`"],"
-    Write-Host "    `"env`": {`"PYTHONPATH`": `"$($env:USERPROFILE -replace '\\', '/')/.claude`"}"
-    Write-Host "  }"
+    $claudeDir = "$env:USERPROFILE\.claude" -replace '\\', '/'
+
+    $debuggerEntry = @{
+        type = "stdio"
+        command = $VenvPythonFwd
+        args = @("-m", "mcp_debugger")
+        env = @{ PYTHONPATH = $claudeDir }
+    }
+
+    if (Test-Path $ClaudeJson) {
+        $cfg = Get-Content $ClaudeJson -Raw | ConvertFrom-Json -AsHashtable
+    } else {
+        $cfg = @{}
+    }
+
+    if (-not $cfg.ContainsKey("mcpServers")) {
+        $cfg["mcpServers"] = @{}
+    }
+    $cfg["mcpServers"]["debugger"] = $debuggerEntry
+    $cfg | ConvertTo-Json -Depth 10 | Set-Content $ClaudeJson -Encoding UTF8
+    Write-Host "Config written to $ClaudeJson."
 }
 
 # ── Done ───────────────────────────────────────────────────────
