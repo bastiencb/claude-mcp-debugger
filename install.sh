@@ -60,10 +60,28 @@ echo "Installing dependencies..."
 
 # ── Register MCP server ──────────────────────────────────────
 
+# Find claude CLI — may not be in PATH for non-login shells (curl | bash)
+CLAUDE_CMD=""
 if command -v claude &>/dev/null; then
+    CLAUDE_CMD="claude"
+else
+    # Search common install locations
+    for candidate in \
+        "$HOME/.local/bin/claude" \
+        "$HOME/.claude/local/bin/claude" \
+        "/usr/local/bin/claude" \
+        "$HOME/.vscode/extensions"/anthropic.claude-code-*/resources/native-binary/claude; do
+        if [ -x "$candidate" ]; then
+            CLAUDE_CMD="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -n "$CLAUDE_CMD" ]; then
     echo "Registering debugger with Claude Code..."
     # -e must come after the server name, before --
-    if claude mcp add -s user -t stdio debugger -e "PYTHONPATH=$HOME/.claude" -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null; then
+    if "$CLAUDE_CMD" mcp add -s user -t stdio debugger -e "PYTHONPATH=$HOME/.claude" -- "$VENV_PYTHON" -m mcp_debugger 2>/dev/null; then
         echo "MCP server registered via 'claude mcp add'."
     else
         echo ""
@@ -73,7 +91,7 @@ if command -v claude &>/dev/null; then
     fi
 else
     echo ""
-    echo "Claude Code CLI not found in PATH."
+    echo "Claude Code CLI not found."
     echo "Open a terminal in VS Code (or where Claude Code is installed) and run:"
     echo "  claude mcp add -s user -t stdio debugger -e \"PYTHONPATH=\$HOME/.claude\" -- $VENV_PYTHON -m mcp_debugger"
 fi
